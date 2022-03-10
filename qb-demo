@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+qb-demo-menu () {
+    qb-utils-menu "qb-demo-menu" "select prompt add-prop view-prop select-file menu"
+}
+qb-demo-menu-menu () {
+    qb-utils-menu "qb-demo" "menu"
+}
+qb-demo-menu-select () {
+    echo "$(qb-utils-select "Enter # : " "yes no")"
+}
+qb-demo-menu-prompt () {
+    echo "$(qb-utils-prompt "What is your name?: " "John Doe")"
+}
+qb-demo-menu-add-prop () {
+    qb-utils-add-prop "$QB_USER_HOME" "qb-props" "PROP" "comment"
+}
+qb-demo-menu-view-prop () {
+    qb-utils-prop "$QB_USER_HOME" "qb-props" "PROP"
+}
+qb-demo-menu-select-file () {
+    qb-utils-file-selector "Select File" "$QB_USER_HOME"
+}
+
+qb-alias "$0" qb-demo
+qb-utils-menu "qb-demo" "menu" "Demo"

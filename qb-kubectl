@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+qb-kubectl-menu () {
+  qb-utils-menu "qb-kubectl" "creds pods shell logs describe env-vars secret"
+}
+
+qb-kubectl-creds () {
+  local CREDS_CMD="$QB_KUBECTL_CREDS_CMD"
+
+  local REGIONS="$QB_KUBECTL_REGIONS"
+
+  local REGION=$(qb-utils-select "Enter Region # : " "$REGIONS")
+  local NAMESPACE=$(qb-utils-prompt "Enter namespace: " "$NAMESPACE")
+
+  qb-utils-cmd "$QB_KUBECTL_CREDS_CMD $REGION $NAMESPACE $REGION-$NAMESPACE"
+}
+
+qb-kubectl-pods () {
+  qb-utils-cmd "kubectl get pods"
+}
+
+qb-kubectl-shell () {
+  local POD=$(qb-utils-select "Select pod #: " "$(qb-utils-cmd "kubectl get pods | grep -v NAME | cut -f 1 -d \" \"")")
+  local CONTAINER=$(qb-utils-select "Select image #: " "$(qb-utils-cmd "kubectl get pod $POD -o jsonpath=\"{.spec.containers[*].name}\" | tr \" \" \"\\\n\"")")
+
+  qb-utils-cmd "kubectl exec -it $POD -c $CONTAINER -- /bin/sh"
+}
+
+qb-kubectl-logs () {
+  local POD=$(qb-utils-select "Select pod #: " "$(qb-utils-cmd "kubectl get pods | grep -v NAME | cut -f 1 -d \" \"")")
+  local CONTAINER=$(qb-utils-select "Select image #: " "$(qb-utils-cmd "kubectl get pod $POD -o jsonpath=\"{.spec.containers[*].name}\" | tr \" \" \"\\\n\"")")
+
+  qb-utils-cmd "kubectl logs -f $POD $CONTAINER"
+}
+
+qb-kubectl-secret () {
+  local SECRETS=$(qb-utils-cmd "kubectl get secrets | cut -d\" \" -f1 | grep -v NAME")
+  local SECRET=$(qb-utils-select "Select secret #: " "$SECRETS")
+  local KEYS=$(qb-utils-cmd "kubectl get secret $SECRET -o json | jq '.data' | jq 'keys[]' | sed 's/\"//g'")
+  local KEY=$(qb-utils-select "Select key #: " "$KEYS")
+  local VALUE=$(qb-utils-cmd "kubectl get secret $SECRET -o jsonpath='{.data.$KEY}' | base64 --decode")
+
+  echo ""
+  echo "$VALUE"
+  echo ""
+}
+
+qb-kubectl-env-vars () {
+  local POD=$(qb-utils-select "Select pod #: " "$(qb-utils-cmd "kubectl get pods | grep -v NAME | cut -f 1 -d \" \"")")
+  local CONTAINER=$(qb-utils-select "Select image #: " "$(qb-utils-cmd "kubectl get pod $POD -o jsonpath=\"{.spec.containers[*].name}\" | tr \" \" \"\\\n\"")")
+  qb-utils-cmd "kubectl exec -it $POD -c $CONTAINER -- sh -c printenv"
+}
+
+qb-kubectl-describe () {
+  local POD=$(qb-utils-select "Select pod #: " "$(qb-utils-cmd "kubectl get pods | grep -v NAME | cut -f 1 -d \" \"")")
+  qb-utils-cmd "kubectl describe pod $POD"
+}
+
+qb-alias "$0" qb-kubectl
+qb-kubectl-menu

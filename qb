@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+
+#
+# One Script equivalent-ish of dx-kubernetes.
+# No need to setup dx.
+# Useful for quick production jumpbox sessions with SRE/AOs.
+# Requires strat/kubectl/jq/...
+#
+typeset QB_RED='\e[0;31m'
+typeset QB_YELLOW='\e[0;33m'
+typeset QB_BLUE='\e[0;34m'
+typeset QB_GREEN='\e[0;36m'
+typeset QB_NO_COLOR='\e[0m'
+
+qb-utils-select-basic () {
+  local LIST=$(echo -e "$2")
+  PS3=$'\e[01;33m'${1}$'\e[0m'
+  local TEMP_IFS=$IFS   # Save current IFS
+  IFS=$'\n'
+  SELECTION_ARRAY=($(echo "$LIST"))
+  IFS=$TEMP_IFS
+  case ${#SELECTION_ARRAY[@]} in
+    0) echo "";;
+    1) echo "$SELECTION_ARRAY";;
+    *) select opt in "${SELECTION_ARRAY[@]}"; do echo "$opt"; break; done;
+  esac
+}
+
+qb-utils-space-to-newline-if-no-newline () {
+    local SPACE="$1"
+    if [[ "$SPACE" == *"\n"* ]];then
+        echo "$SPACE"
+    else
+        echo "$SPACE" | tr " " "\n"
+    fi
+}
+
+qb-utils-select () {
+  local PROMPT="$1"
+  local IN_LIST="$2"
+  local PAGE="${3:-1}"
+
+  local LIST="$(qb-utils-space-to-newline-if-no-newline "$IN_LIST")"
+  local LENGTH=$(echo -e "$LIST" | wc -l | sed 's/ //g')
+  local PAGE_SIZE=25
+  local PAGES=$(($LENGTH / $PAGE_SIZE + 1))
+  
+  local FIRST_PAGE="|<"
+  local LAST_PAGE=">|"
+  local PREVIOUS_PAGE="<"
+  local NEXT_PAGE=">"
+
+  if [[ "$LENGTH" -gt "$PAGE_SIZE" ]];then
+    LIST=""
+    local FIRST=$(($PAGE_SIZE*($PAGE-1)+1))
+    local LAST=$(($FIRST+$PAGE_SIZE-1))
+    for i in $(seq $FIRST $LAST);do
+      local SEL=$(echo -e "$2" | tr '\n' '~' | cut -d"~" -f"$i")
+      LIST="$LIST$SEL\n"
+    done
+    if [[ "$FIRST" -gt 1 ]];then
+      LIST="$FIRST_PAGE\n$PREVIOUS_PAGE\n$LIST"
+    fi
+    if [[ "$LAST" -lt "$LENGTH" ]];then
+      LIST="$LIST$NEXT_PAGE\n$LAST_PAGE"
+    fi
+  fi
+
+  local SELECTION=$(qb-utils-select-basic "$PROMPT" "$LIST")
+
+  if [[ "$SELECTION" = "$FIRST_PAGE" ]];then
+    SELECTION=$(qb-utils-select "$PROMPT" "$IN_LIST" "1")
+  elif [[ "$SELECTION" = "$PREVIOUS_PAGE" ]];then
+    SELECTION=$(qb-utils-select "$PROMPT" "$IN_LIST" "$(($PAGE-1))")
+  elif [[ "$SELECTION" = "$NEXT_PAGE" ]];then
+    SELECTION=$(qb-utils-select "$PROMPT" "$IN_LIST" "$(($PAGE+1))")
+  elif [[ "$SELECTION" = "$LAST_PAGE" ]];then
+    SELECTION=$(qb-utils-select "$PROMPT" "$IN_LIST" "$(($PAGES))")
+  fi
+
+  echo "$SELECTION"
+}
+
+qb-utils-prompt () {
+  local PROMPT="$1"
+  local DEFAULT="$2"
+  
+  if [[ ! -z "$DEFAULT" ]]
+  then
+    PROMPT="$PROMPT ["$'\e[01;36m'"$DEFAULT"$'\e[01;33m'"]"
+  fi
+  #echo -e "${QB_BLUE}${PROMPT}${QB_NO_COLOR} "
+  #read "ENTERED"
+  PROMPT=$'\e[01;33m'"$PROMPT"$'\e[0m'
+  if [[ "$BASH" == "/bin/bash" ]]
+  then
+    read -rp "$PROMPT " ENTERED
+  else
+    read -r "ENTERED?$PROMPT "
+  fi
+  echo ${ENTERED:-$DEFAULT}
+}
+
+qb-utils-cmd () {
+  local CMD="$1"
+  local NO_ECHO="$2"
+
+  local PWD=$(pwd)
+  
+  if [[ "$NO_ECHO" != "true" ]];then
+    echo "$CMD" 1>&2
+  fi
+  echo ""
+  local COMMAND="$(echo "$CMD" | head -n 1 | cut -d " " -f 1)"
+
+  if ! command -v $COMMAND &> /dev/null
+  then
+      echo "$COMMAND could not be found"
+  else
+    eval $(printf "$CMD" | sed '/\/\\/g')
+  fi
+  echo ""
+  cd $PWD
+}
+
+qb-utils-menu () {
+  local PREFIX="$1"
+  local TASKS="$2"
+  local MESSAGE="$3"
+
+  local TASK_MENU="$PREFIX"
+  local TASK_CONTEXT=""
+  local TASK_NAME="$PREFIX-"
+  local TASK_PREFIX="$PREFIX-"
+
+  if [[ ! -z "$MESSAGE" ]];then
+    echo ""
+    echo -e "${QB_RED}$MESSAGE${QB_NO_COLOR}"
+  fi
+  TASKS=$(echo $TASKS | tr ' ' '\n')
+  qb-utils-menu2 "$TASK_MENU" "$TASK_CONTEXT" "$TASK_NAME" "$TASK_PREFIX" "$TASKS"
+}
+
+qb-utils-menu2 () {
+  local TASK_MENU="$1"
+  local TASK_CONTEXT="${2}"
+  local TASK_NAME="${3:-Task}"
+  local TASK_PREFIX="$4"
+  local TASKS="$5"
+  local TASK_FOLDER="$6"
+
+  local TASK_EXIT=".."
+  local TASK_MAIN_MENU="/"
+
+  local TASK_CONTEXT_MENU=""
+
+  local MENU_CMD="qb-utils-menu2 \"$TASK_MENU\" \"$TASK_CONTEXT\" \"$TASK_NAME\" \"$TASK_PREFIX\" \"$TASKS\" \"$TASK_FOLDER\" \"$FIRST_MENU\""
+  if [[ -z "$QB_UTILS_FIRST_MENU" ]]; then
+    typeset QB_UTILS_FIRST_MENU="$MENU_CMD"
+  fi
+
+  echo ""
+  local TASK_CONTEXT_DISPLAY="> ${QB_RED}${TASK_CONTEXT}${QB_NO_COLOR}"
+  if [[ -z "$TASK_CONTEXT" ]]; then
+    TASK_CONTEXT_DISPLAY=""
+  fi
+
+  echo -e "${QB_BLUE}$TASK_MENU${QB_NO_COLOR} $TASK_CONTEXT_DISPLAY"
+  local TASK=$(qb-utils-select "Enter $TASK_NAME #): " "$TASK_EXIT $TASK_MAIN_MENU $TASK_CONTEXT_MENU $TASKS")
+
+  if [[ "$TASK" == "$TASK_EXIT" ]]; then
+    echo "$TASK_EXIT"
+  elif [[ "$TASK" == "$TASK_MAIN_MENU" ]]; then
+    qb-utils-cmd "$QB_UTILS_FIRST_MENU" true
+  else
+    qb-utils-cmd "$TASK_PREFIX$TASK"
+
+    echo ""
+    qb-utils-cmd "$MENU_CMD" true
+    #qb-utils-menu2 "$TASK_MENU" "$TASK_CONTEXT" "$TASK_NAME" "$TASK_PREFIX" "$TASKS" "$TASK_FOLDER"
+  fi
+}
+
+qb-utils-prop () {
+  local FOLDER="$1"
+  local FILE="$2"
+  local KEY="$3"
+
+  if [[ -f "$FOLDER/$FILE" ]]
+  then
+    cat "$FOLDER/$FILE" | grep ^"$KEY"= | cut -d '=' -f 2-
+  fi
+}
+
+qb-utils-prop-write () {
+  local FOLDER="$1"
+  local FILE="$2"
+  local KEY="$3"
+  local VALUE="$4"
+
+  mkdir -p "$FOLDER"
+  touch "$FOLDER/$FILE"
+
+  local CONTENT=$(cat "$FOLDER/$FILE" | grep -v "^$KEY=")
+  echo "$CONTENT" | grep -v "^$" > "$FOLDER/$FILE"
+  echo "$KEY=$VALUE" >> "$FOLDER/$FILE"
+  CONTENT=$(cat "$FOLDER/$FILE")
+  echo "$CONTENT" | grep -v "^$" | sort > "$FOLDER/$FILE"
+}
+
+qb-utils-add-prop () {
+  local FOLDER="$1"
+  local FILE="$2"
+  local KEY="$3"
+  local COMMENT="$4"
+  local CURRENT="$5"
+
+  if [[ ! -z "$COMMENT" ]]; then
+    COMMENT=" ($COMMENT)"
+  fi
+  if [[ -z "$CURRENT" ]]; then
+    CURRENT="$(qb-utils-prop "$FOLDER" "$FILE" "$KEY")"
+  fi
+  local VALUE=$(qb-utils-prompt $'Enter \e[01;36m'"$KEY"$'\e[01;33m'"$COMMENT"':' "$CURRENT")
+  qb-utils-prop-write "$FOLDER" "$FILE" "$KEY" "$VALUE"
+  echo "$VALUE"
+}
+
+qb-utils-file-selector () {
+  local PROMPT=${1:-Enter}
+  local FOLDER=${2:-~}
+
+  local NONE="<NONE>"
+  FOLDER=$(cd "$FOLDER" && pwd)
+
+  local FILES=$(ls -a "$FOLDER")
+  local LENGTH=$(echo -e "$FILES" | wc -l | sed 's/ //g')
+  local NEW_FILES=""
+  for i in $(seq 1 $LENGTH)
+  do
+    local NEW_FILE=$(echo -e "$FILES" | tr '\n' '~' | cut -d"~" -f"$i")
+    if [[ -d "$FOLDER/$NEW_FILE" ]];then
+      NEW_FILE="$NEW_FILE/"
+    fi
+    NEW_FILES="$NEW_FILES$NEW_FILE\n"
+  done
+
+  local SELECTED=$(qb-utils-select "$PROMPT #): " "$NONE\n$FOLDER/\n$NEW_FILES")
+
+  if [[ "$SELECTED" = "$FOLDER/" ]];then
+    SELECTED="$FOLDER/"
+  elif [[ "$SELECTED" = "." ]];then
+    SELECTED=$(qb-utils-file-selector "$PROMPT" "$FOLDER")
+  elif [[ "$SELECTED" = ".." ]];then
+    SELECTED=$(qb-utils-file-selector "$PROMPT" "$FOLDER/..")
+  elif [[ "$SELECTED" = "$NONE" ]];then
+    SELECTED=""
+  elif [[ -d "$FOLDER/$SELECTED" ]];then
+    SELECTED=$(qb-utils-file-selector "$PROMPT" "$FOLDER/$SELECTED")
+  else
+    SELECTED="$FOLDER/$SELECTED"
+  fi
+  echo "$SELECTED"
+}
+
+#QB_SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+#QB_SCRIPT_NAME="$(echo "$0" | rev | cut -d "/" -f1 | rev)"
+QB_USER_HOME="$(echo ~)"
+
+qb-alias () {
+  local SOURCE="$1"
+  local ALIAS="$2"
+  local RUN_AT_STARTUP="$3"
+
+  local SCRIPT_PATH="$( cd -- "$(dirname "$SOURCE")" >/dev/null 2>&1 ; pwd -P )"
+  local SCRIPT_NAME="$(echo "$SOURCE" | rev | cut -d "/" -f1 | rev)"
+  local USER_HOME="$(echo ~)"
+  local RC="$USER_HOME/.bashrc"
+  if [[ ! -f "$RC" ]]; then
+    RC="$USER_HOME/.zshrc"
+  fi
+  if [[ -f "$RC" ]]; then
+    local ALIAS_EXISTS="$(cat "$RC" | grep "alias $ALIAS=")"
+    if [[ -z "$ALIAS_EXISTS" ]];then
+      qb-utils-cmd "echo \"alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'\" >> $RC"
+      if [[ "$RUN_AT_STARTUP" == "true" ]];then
+        qb-utils-cmd "echo $ALIAS >> $RC"
+      fi
+      qb-utils-cmd "alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'"
+    fi
+  fi
+}
+
+qb-alias "$0" qb true
