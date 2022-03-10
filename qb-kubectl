@@ -56,5 +56,4 @@ qb-kubectl-describe () {
   qb-utils-cmd "kubectl describe pod $POD"
 }
 
-qb-alias "$0" qb-kubectl
-qb-kubectl-menu
+qb-source "$0"

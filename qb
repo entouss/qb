@@ -108,7 +108,7 @@ qb-utils-cmd () {
   local PWD=$(pwd)
   
   if [[ "$NO_ECHO" != "true" ]];then
-    echo "$CMD" 1>&2
+    printf "$CMD\n" 1>&2
   fi
   echo ""
   local COMMAND="$(echo "$CMD" | head -n 1 | cut -d " " -f 1)"
@@ -267,6 +267,27 @@ qb-utils-file-selector () {
 #QB_SCRIPT_NAME="$(echo "$0" | rev | cut -d "/" -f1 | rev)"
 QB_USER_HOME="$(echo ~)"
 
+qb-rc-append () {
+  local APPEND_LINE="$1"
+  local IF_MISSING="${2:-$APPEND_LINE}"
+  local USER_HOME="$(echo ~)"
+  local RC="$USER_HOME/.bashrc"
+  if [[ ! -f "$RC" ]]; then
+    RC="$USER_HOME/.zshrc"
+  fi
+  if [[ -f "$RC" ]]; then
+    local LINE_EXISTS="$(cat "$RC" | grep ^"$IF_MISSING")"
+    if [[ -z "$LINE_EXISTS" ]];then
+      qb-utils-cmd "printf \"\\\n$(printf "$APPEND_LINE" | sed 's/"/\\\"/g')\" >> $RC"
+    fi
+  fi
+}
+
+qb-source () {
+  local SOURCE="$1"
+  qb-rc-append "source \"$1\""
+}
+
 qb-alias () {
   local SOURCE="$1"
   local ALIAS="$2"
@@ -274,21 +295,12 @@ qb-alias () {
 
   local SCRIPT_PATH="$( cd -- "$(dirname "$SOURCE")" >/dev/null 2>&1 ; pwd -P )"
   local SCRIPT_NAME="$(echo "$SOURCE" | rev | cut -d "/" -f1 | rev)"
-  local USER_HOME="$(echo ~)"
-  local RC="$USER_HOME/.bashrc"
-  if [[ ! -f "$RC" ]]; then
-    RC="$USER_HOME/.zshrc"
+
+  qb-rc-append "alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'" "alias $ALIAS="
+  if [[ "$RUN_AT_STARTUP" == "true" ]];then
+    qb-rc-append "$ALIAS"
   fi
-  if [[ -f "$RC" ]]; then
-    local ALIAS_EXISTS="$(cat "$RC" | grep "alias $ALIAS=")"
-    if [[ -z "$ALIAS_EXISTS" ]];then
-      qb-utils-cmd "echo \"alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'\" >> $RC"
-      if [[ "$RUN_AT_STARTUP" == "true" ]];then
-        qb-utils-cmd "echo $ALIAS >> $RC"
-      fi
-      qb-utils-cmd "alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'"
-    fi
-  fi
+  qb-utils-cmd "alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'"
 }
 
-qb-alias "$0" qb true
+qb-source "$0"
