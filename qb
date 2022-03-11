@@ -285,7 +285,7 @@ qb-rc-append () {
 
 qb-source () {
   local SOURCE="$1"
-  qb-rc-append "source \"$1\""
+  qb-rc-append "source \\\"$1\\\""
 }
 
 qb-alias () {
