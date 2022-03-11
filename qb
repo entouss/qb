@@ -303,4 +303,4 @@ qb-alias () {
   qb-utils-cmd "alias $ALIAS='source $SCRIPT_PATH/$SCRIPT_NAME'"
 }
 
-qb-source "$0"
+qb-source "${BASH_SOURCE[0]:-$0}"

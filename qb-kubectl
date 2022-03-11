@@ -56,4 +56,4 @@ qb-kubectl-describe () {
   qb-utils-cmd "kubectl describe pod $POD"
 }
 
-qb-source "$0"
+qb-source "${BASH_SOURCE[0]:-$0}"

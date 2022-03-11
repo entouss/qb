@@ -25,4 +25,4 @@ qb-demo-menu-view-prop () {
 qb-demo-menu-select-file () {
     qb-utils-file-selector "Select File" "$QB_USER_HOME"
 }
-qb-source "$0"
+qb-source "${BASH_SOURCE[0]:-$0}"
