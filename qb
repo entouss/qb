@@ -278,14 +278,15 @@ qb-rc-append () {
   if [[ -f "$RC" ]]; then
     local LINE_EXISTS="$(cat "$RC" | grep ^"$IF_MISSING")"
     if [[ -z "$LINE_EXISTS" ]];then
-      qb-utils-cmd "printf \"\\\n$(printf "$APPEND_LINE" | sed 's/"/\\\"/g')\" >> $RC"
+      qb-utils-cmd "echo \"$(echo "$APPEND_LINE" | sed 's/"/\\\"/g')\" >> $RC"
     fi
   fi
 }
 
 qb-source () {
   local SOURCE="$1"
-  qb-rc-append "source \\\"$1\\\""
+  local SOURCE_CMD="source \\\"$1\\\""
+  qb-rc-append "$SOURCE_CMD"
 }
 
 qb-alias () {
